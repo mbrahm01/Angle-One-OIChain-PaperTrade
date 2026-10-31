@@ -1,0 +1,1398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OI Ladder: live option chain from Angel One</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<script>
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem("oi-theme"); } catch (e) {}
+    if (!t) t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<style>
+:root {
+  --bg: #0f1823; --panel: #152130; --line: #243448; --line-soft: #1b2a3b; --input: #0c141e;
+  --text: #e8eef6; --muted: #8a9bb2; --faint: #5f7189;
+  --ce: #f0566a; --ce-bar: rgba(240,86,106,.22); --ce-itm: rgba(240,86,106,.06);
+  --pe: #2cc08c; --pe-bar: rgba(44,192,140,.22); --pe-itm: rgba(44,192,140,.06);
+  --spot: #f2c14e; --spot-bg: rgba(242,193,78,.12); --on-spot: #1a1405;
+  --flash-up: rgba(44,192,140,.38); --flash-dn: rgba(240,86,106,.38);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f2f5f9; --panel: #ffffff; --line: #d6dee9; --line-soft: #e6ebf2; --input: #f7f9fc;
+  --text: #142033; --muted: #566880; --faint: #8a99ad;
+  --ce: #d1334a; --ce-bar: rgba(209,51,74,.17); --ce-itm: rgba(209,51,74,.05);
+  --pe: #0f8a60; --pe-bar: rgba(15,138,96,.17); --pe-itm: rgba(15,138,96,.05);
+  --spot: #9a6200; --spot-bg: rgba(200,140,0,.13); --on-spot: #ffffff;
+  --flash-up: rgba(15,138,96,.28); --flash-dn: rgba(209,51,74,.28);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: "Archivo", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px; line-height: 1.4; font-variant-numeric: tabular-nums;
+}
+.app { max-width: 1600px; margin: 0 auto; padding: 0 22px 40px; }
+:focus-visible { outline: 2px solid var(--spot); outline-offset: 2px; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 24px; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
+.brand { font-stretch: 68%; font-weight: 800; font-size: 28px; line-height: 1; letter-spacing: .2px; }
+.brand small { display: block; font-stretch: 100%; font-weight: 500; font-size: 12px; color: var(--muted); letter-spacing: 0; margin-top: 5px; }
+.ctl { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+label.f { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+input, select {
+  background: var(--input); color: var(--text); border: 1px solid var(--line); border-radius: 6px;
+  padding: 7px 10px; font: inherit; font-size: 14px; min-width: 0;
+}
+.btn {
+  border: 1px solid var(--line); background: transparent; color: var(--text); border-radius: 6px;
+  padding: 7px 13px; font: inherit; font-size: 14px; cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.go { background: var(--spot); color: var(--on-spot); border-color: var(--spot); font-weight: 650; }
+.btn[disabled] { opacity: .55; cursor: progress; }
+.status { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); min-width: 0; }
+.status span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
+.status[data-state="live"] .dot { background: var(--pe); }
+.status[data-state="idle"] .dot { background: var(--spot); }
+.status[data-state="stale"] .dot, .status[data-state="off"] .dot { background: var(--ce); }
+
+/* summary strip */
+.strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); border-bottom: 1px solid var(--line); }
+.stat { padding: 14px 18px 13px 0; min-width: 0; }
+.stat + .stat { padding-left: 18px; border-left: 1px solid var(--line); }
+.stat .lbl { font-size: 12.5px; color: var(--muted); }
+.stat .val { font-size: 26px; font-weight: 650; font-stretch: 88%; line-height: 1.15; margin-top: 3px; white-space: nowrap; }
+.stat .val.spot { color: var(--spot); }
+.stat .sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; min-height: 1.3em; }
+.up { color: var(--pe); } .dn { color: var(--ce); }
+.c-ce { color: var(--ce); } .c-pe { color: var(--pe); }
+@media (max-width: 900px) { .stat + .stat { padding-left: 0; border-left: 0; } .stat { padding-right: 12px; } }
+
+.note { min-height: 20px; margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.note.err { color: var(--ce); }
+
+/* layout */
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 26px; margin-top: 12px; align-items: start; }
+@media (max-width: 1180px) { .main { grid-template-columns: 1fr; } }
+
+.bar { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin-bottom: 8px; }
+.grp { display: flex; align-items: center; gap: 8px; }
+.cap { font-size: 12.5px; color: var(--muted); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg button { background: transparent; border: 0; color: var(--muted); padding: 6px 11px; font: inherit; font-size: 13px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); font-weight: 600; }
+.bar .btn { margin-left: auto; padding: 6px 12px; font-size: 13px; }
+.legend { margin: 0 0 10px; font-size: 12.5px; color: var(--muted); }
+
+/* ladder */
+.ladder { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: auto; max-height: calc(100vh - 270px); min-height: 220px; }
+.grid { min-width: 680px; }
+.row {
+  display: grid; grid-template-columns: 76px minmax(120px, 1fr) 72px 92px 72px minmax(120px, 1fr) 76px;
+  min-height: 32px; border-bottom: 1px solid var(--line-soft);
+}
+.row.head { position: sticky; top: 0; z-index: 3; background: var(--panel); border-bottom: 1px solid var(--line); font-size: 12.5px; color: var(--muted); min-height: 34px; }
+.row.head .c { font-weight: 600; }
+.c { display: flex; align-items: center; padding: 0 9px; font-stretch: 90%; position: relative; min-width: 0; }
+.c.n, .c.d { justify-content: flex-end; }
+.c.d { font-size: 13px; }
+.c.k { justify-content: center; font-weight: 650; font-stretch: 92%; font-size: 14.5px; }
+.row.head .c.k { justify-content: center; }
+.itm.ce { background: var(--ce-itm); } .itm.pe { background: var(--pe-itm); }
+.row.atm { background: var(--spot-bg); }
+.row.atm .c.k { color: var(--spot); }
+.add.ce { color: var(--ce); } .add.pe { color: var(--pe); }
+.cut, .muted { color: var(--muted); }
+
+.oi { padding: 0; }
+.oi .b, .oi .g { position: absolute; }
+.oi .b { top: 4px; bottom: 8px; }
+.oi.ce .b { right: 0; background: var(--ce-bar); border-radius: 3px 0 0 3px; }
+.oi.pe .b { left: 0; background: var(--pe-bar); border-radius: 0 3px 3px 0; }
+.oi .g { bottom: 3px; height: 3px; }
+.oi.ce .g { right: 0; } .oi.pe .g { left: 0; }
+.oi.ce .g.add { background: var(--ce); } .oi.pe .g.add { background: var(--pe); }
+.oi .g.cut { background: repeating-linear-gradient(135deg, var(--muted) 0 2px, transparent 2px 4px); }
+.oi .t { position: relative; z-index: 1; width: 100%; padding: 0 9px; display: flex; font-size: 13.5px; }
+.oi.ce .t { justify-content: flex-end; }
+
+.spotline { position: relative; height: 0; border-top: 1.5px solid var(--spot); z-index: 2; }
+.spotline span {
+  position: absolute; left: 50%; top: -11px; transform: translateX(-50%); background: var(--panel); color: var(--spot);
+  border: 1px solid var(--spot); border-radius: 11px; padding: 1px 10px; font-size: 12px; font-weight: 650; white-space: nowrap;
+}
+.empty { padding: 36px 20px; color: var(--muted); font-size: 14px; max-width: 520px; }
+.foot { margin: 10px 0 0; font-size: 12.5px; color: var(--muted); max-width: 760px; }
+
+@keyframes fu { from { background: var(--flash-up); } to { background: transparent; } }
+@keyframes fd { from { background: var(--flash-dn); } to { background: transparent; } }
+.fu { animation: fu .9s ease-out; } .fd { animation: fd .9s ease-out; }
+@media (prefers-reduced-motion: reduce) { .fu, .fd { animation: none; } }
+
+/* side column */
+.side section { margin-bottom: 22px; }
+.side h2 { font-size: 14px; font-weight: 650; margin: 0 0 6px; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.side h2 .now { font-weight: 500; color: var(--muted); font-size: 13px; }
+.chart { position: relative; height: 104px; border-bottom: 1px solid var(--line-soft); }
+.chart svg { width: 100%; height: 100%; display: block; }
+.chart .empty { padding: 30px 0; font-size: 13px; }
+.ln { fill: none; stroke-width: 1.7; stroke-linejoin: round; stroke-linecap: round; }
+.ln-spot { stroke: var(--spot); } .ln-ce { stroke: var(--ce); } .ln-pe { stroke: var(--pe); } .ln-pcr { stroke: var(--text); }
+.ax { font-size: 10.5px; fill: var(--faint); }
+.refline { stroke: var(--faint); stroke-dasharray: 2 4; }
+.guide { stroke: var(--muted); stroke-dasharray: 3 3; }
+.tip {
+  position: absolute; top: 2px; display: none; pointer-events: none; z-index: 4; background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; white-space: nowrap;
+}
+.tip b { margin-right: 8px; } .tip i { font-style: normal; margin-left: 8px; }
+.movers { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 20px; }
+.mv h3 { font-size: 12.5px; font-weight: 650; margin: 0 0 3px; }
+.mv.ce h3 { color: var(--ce); } .mv.pe h3 { color: var(--pe); }
+.mv ul { list-style: none; margin: 0; padding: 0; }
+.mv li { display: flex; justify-content: space-between; font-size: 13px; padding: 3px 0; border-bottom: 1px solid var(--line-soft); }
+.mv li.none { color: var(--faint); }
+
+/* paper trading */
+[hidden] { display: none !important; }
+.viewseg { margin-bottom: 12px; }
+.c.n[data-k] { cursor: pointer; }
+.c.n[data-k]:hover { text-decoration: underline; text-underline-offset: 3px; }
+.pp-sum { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); border-bottom: 1px solid var(--line); margin-bottom: 12px; }
+.ph { font-size: 14px; font-weight: 650; margin: 20px 0 8px; }
+.ptable { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); overflow: auto; }
+.pr { display: grid; grid-template-columns: minmax(170px, 1.8fr) 58px 50px 88px 88px 104px 232px; gap: 6px; align-items: center; min-height: 36px; padding: 0 12px; border-bottom: 1px solid var(--line-soft); font-stretch: 90%; min-width: 640px; }
+.pr:last-child { border-bottom: 0; }
+.pr.hd { color: var(--muted); font-size: 12.5px; font-weight: 600; min-height: 32px; }
+.pr .r { text-align: right; }
+.pr small { color: var(--muted); margin-left: 6px; }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 650; }
+.pill.buy { background: var(--pe-bar); color: var(--pe); }
+.pill.sell { background: var(--ce-bar); color: var(--ce); }
+.mini { background: transparent; border: 1px solid var(--line); color: var(--text); border-radius: 5px; padding: 3px 9px; font: inherit; font-size: 12.5px; cursor: pointer; }
+.mini:hover { border-color: var(--muted); }
+.mini[disabled] { opacity: .45; cursor: not-allowed; }
+.payoff { position: relative; height: 290px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.payoff svg { width: 100%; height: 100%; display: block; }
+.payoff .empty { padding: 60px 24px; }
+.ln-payoff { stroke: var(--text); stroke-width: 2; }
+.axl { stroke: var(--muted); stroke-width: 1; }
+.spotv { stroke: var(--spot); stroke-dasharray: 4 4; stroke-width: 1.2; }
+.lbl-spot { fill: var(--spot); font-size: 11.5px; font-weight: 650; }
+.lbl-be { fill: var(--text); font-size: 11px; }
+.pp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: 6px; }
+.pp-stats .stat { padding-top: 10px; padding-bottom: 6px; }
+.pp-stats .val { font-size: 20px; }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; min-width: 330px; }
+dialog::backdrop { background: rgba(0,0,0,.55); }
+dialog h3 { margin: 0 0 2px; font-size: 17px; font-stretch: 85%; }
+dialog .px { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+dialog .row2 { display: flex; gap: 14px; align-items: flex-end; margin-bottom: 12px; }
+dialog .sum { min-height: 36px; font-size: 13px; color: var(--muted); }
+dialog .acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 12px; }
+
+/* strategy builder */
+#view-paper { container-type: inline-size; }
+.pp-top { display: grid; grid-template-columns: 1fr; gap: 4px 26px; align-items: start; }
+@container (min-width: 900px) { .pp-top { grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); } }
+.ph.first { margin-top: 6px; }
+.badd { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+.br { display: grid; grid-template-columns: 62px 52px minmax(124px, 1fr) 66px 80px 34px; gap: 6px; align-items: center; min-height: 38px; padding: 0 10px; border-bottom: 1px solid var(--line-soft); min-width: 440px; font-stretch: 90%; }
+.br:last-child { border-bottom: 0; }
+.br.hd { color: var(--muted); font-size: 12.5px; font-weight: 600; min-height: 32px; }
+.br .r { text-align: right; }
+.br input { width: 60px; padding: 4px 6px; }
+.stp { display: flex; align-items: center; gap: 6px; }
+.stp span { min-width: 62px; text-align: center; font-weight: 650; }
+button.pill { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650; }
+.bfoot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; align-items: center; }
+.bfoot input { flex: 1; min-width: 140px; }
+.gh { background: var(--line-soft); }
+.hrow { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+
+/* stop-loss, toasts, alerts */
+.toasts { position: fixed; top: 14px; right: 14px; z-index: 60; display: flex; flex-direction: column; gap: 8px; max-width: min(440px, calc(100vw - 28px)); }
+.toast { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--muted); border-radius: 8px; padding: 10px 12px; box-shadow: 0 6px 24px rgba(0,0,0,.35); font-size: 13.5px; }
+.toast b { display: block; margin-bottom: 2px; }
+.toast.stop, .toast.exit { border-left-color: var(--ce); }
+.toast.warn { border-left-color: var(--spot); }
+.toast.info, .toast.trail { border-left-color: var(--pe); }
+.sr { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(210px, 1.6fr) minmax(220px, 1.8fr) 70px; gap: 10px; align-items: center; min-height: 40px; padding: 6px 12px; border-bottom: 1px solid var(--line-soft); min-width: 640px; font-size: 13px; }
+.sr:last-child { border-bottom: 0; }
+.sr.hd { color: var(--muted); font-size: 12.5px; font-weight: 600; min-height: 32px; }
+.sr .r { text-align: right; }
+.st.pause, .st.muted { color: var(--muted); } .st.hot { color: var(--spot); font-weight: 600; } .st.done { color: var(--text); }
+.pbar { display: block; height: 4px; background: var(--line); border-radius: 2px; margin-top: 5px; overflow: hidden; }
+.pbar i { display: block; height: 100%; background: var(--spot); }
+.al { display: grid; grid-template-columns: 52px 1fr; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--line-soft); font-size: 13px; }
+.al:last-child { border-bottom: 0; } .al.stop span:last-child, .al.exit span:last-child { color: var(--ce); font-weight: 600; } .al span:first-child { color: var(--muted); }
+.stopv { stroke: var(--ce); stroke-width: 1.5; stroke-dasharray: 6 4; }
+.lbl-stop { fill: var(--ce); font-size: 11.5px; font-weight: 650; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.sum.bad { color: var(--ce); }
+dialog .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+dialog .field > .cap { font-size: 12.5px; }
+.hrow .btn + .btn { margin-left: 8px; }
+.nrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">OI Ladder<small>Live option chain from Angel One</small></div>
+    <form id="form" class="ctl" autocomplete="off">
+      <label class="f">Underlying
+        <input id="und" list="und-list" value="NIFTY" size="12" spellcheck="false" aria-label="Underlying symbol">
+      </label>
+      <datalist id="und-list"></datalist>
+      <label class="f">Expiry
+        <select id="expiry" aria-label="Expiry date"></select>
+      </label>
+      <button class="btn go" type="submit" id="go">Track</button>
+    </form>
+    <div class="status" id="status" data-state="off"><i class="dot"></i><span id="status-text">Connecting to server…</span></div>
+    <button class="btn" id="theme" type="button">Light theme</button>
+  </header>
+
+  <section class="strip" id="strip" aria-label="Chain summary"></section>
+  <p class="note" id="note" role="status" aria-live="polite"></p>
+
+  <div class="main">
+    <div>
+      <div class="seg viewseg" id="seg-view">
+        <button type="button" data-v="chain" aria-pressed="true">Option chain</button>
+        <button type="button" data-v="paper" aria-pressed="false">Paper trades</button>
+      </div>
+      <div id="view-chain">
+      <div class="bar">
+        <div class="grp"><span class="cap">OI change over</span>
+          <div class="seg" id="seg-win">
+            <button type="button" data-v="d" aria-pressed="true">Today</button>
+            <button type="button" data-v="m5" aria-pressed="false">5 min</button>
+            <button type="button" data-v="m15" aria-pressed="false">15 min</button>
+            <button type="button" data-v="m30" aria-pressed="false">30 min</button>
+          </div>
+        </div>
+        <div class="grp"><span class="cap">Strikes</span>
+          <select id="span" aria-label="Strikes around the money">
+            <option value="5">ATM ±5</option>
+            <option value="10" selected>ATM ±10</option>
+            <option value="15">ATM ±15</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+        <div class="grp"><span class="cap">OI in</span>
+          <div class="seg" id="seg-unit">
+            <button type="button" data-v="units" aria-pressed="true">Units</button>
+            <button type="button" data-v="lots" aria-pressed="false">Lots</button>
+          </div>
+        </div>
+        <button class="btn" id="csv" type="button">Download CSV</button>
+      </div>
+      <p class="legend">The bar is open interest. The thin line under it is the change: solid where OI was added, hatched where it was cut. Calls on the left, puts on the right.</p>
+      <div class="ladder" id="ladder"><div class="grid" id="grid" role="table" aria-label="Option chain"></div></div>
+      <p class="foot">“Today” compares with the first OI this tracker recorded today. Start the server before 9:15 and it matches the change from the previous close.</p>
+      </div>
+
+      <div id="view-paper" hidden>
+        <div class="pp-sum" id="pp-sum"></div>
+        <div class="pp-top">
+          <div class="pp-build">
+            <h2 class="ph first">Strategy builder</h2>
+            <div class="badd">
+              <div class="seg" id="b-side"><button type="button" data-v="BUY" aria-pressed="true">Buy</button><button type="button" data-v="SELL" aria-pressed="false">Sell</button></div>
+              <div class="seg" id="b-type"><button type="button" data-v="CE" aria-pressed="true">Call</button><button type="button" data-v="PE" aria-pressed="false">Put</button></div>
+              <select id="b-strike" aria-label="Strike"></select>
+              <input id="b-lots" type="number" min="1" max="1000" value="1" style="width:70px" aria-label="Lots">
+              <button class="btn" id="b-add" type="button">Add leg</button>
+            </div>
+            <div class="badd">
+              <span class="cap">Or start from</span>
+              <select id="preset" aria-label="Preset strategy">
+                <option value="short_straddle">Short straddle</option>
+                <option value="long_straddle">Long straddle</option>
+                <option value="short_strangle">Short strangle</option>
+                <option value="long_strangle">Long strangle</option>
+                <option value="iron_condor">Iron condor</option>
+                <option value="bull_call">Bull call spread</option>
+                <option value="bear_put">Bear put spread</option>
+              </select>
+              <button class="btn" id="b-load" type="button">Load preset</button>
+            </div>
+            <div class="ptable" id="b-legs"></div>
+            <div class="bfoot">
+              <input id="b-name" value="Custom strategy" maxlength="40" aria-label="Strategy name">
+              <button class="btn go" id="b-exec" type="button" disabled>Execute strategy</button>
+              <button class="btn" id="b-clear" type="button">Clear</button>
+            </div>
+            <p class="legend" id="b-sum"></p>
+          </div>
+          <div class="pp-chart">
+            <h2 class="ph first">Payoff at expiry</h2>
+            <div class="bar">
+              <div class="seg" id="seg-pf">
+                <button type="button" data-v="draft" aria-pressed="false">Draft</button>
+                <button type="button" data-v="open" aria-pressed="true">Open positions</button>
+                <button type="button" data-v="both" aria-pressed="false">Draft + open</button>
+              </div>
+              <span class="cap" id="pf-cap"></span>
+            </div>
+            <div class="payoff" id="payoff"></div>
+            <div class="pp-stats" id="pp-stats"></div>
+          </div>
+        </div>
+        <p class="legend">Orders fill at the live LTP. Brokerage, taxes, slippage and margin are not included. You can also click any LTP in the option chain and choose Add to strategy.</p>
+        <div class="hrow"><h2 class="ph">Your strategy positions</h2><div><button class="btn" id="pp-stop-all" type="button">Stop-loss for all</button><button class="btn" id="pp-reset" type="button">Reset book</button></div></div>
+        <div class="ptable" id="pp-open"></div>
+        <h2 class="ph">Stop-loss rules</h2>
+        <div class="ptable" id="pp-stops"></div>
+        <div class="hrow"><h2 class="ph">Alerts</h2><div class="nrow"><span class="cap" id="nt-status"></span><button class="btn" id="nt-test" type="button">Send test message</button></div></div>
+        <div class="ptable" id="pp-alerts"></div>
+        <h2 class="ph">Paper P&amp;L through the session</h2>
+        <div class="chart" id="ch-pnl"></div>
+        <h2 class="ph">Closed trades</h2>
+        <div class="ptable" id="pp-closed"></div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <section><h2>Spot <span class="now" id="now-spot"></span></h2><div class="chart" id="ch-spot"></div></section>
+      <section><h2>Put-call ratio <span class="now" id="now-pcr"></span></h2><div class="chart" id="ch-pcr"></div></section>
+      <section><h2>Total open interest <span class="now" id="now-oi"></span></h2><div class="chart" id="ch-oi"></div></section>
+      <section><h2>Biggest OI moves <span class="now" id="now-win"></span></h2><div class="movers" id="movers"></div></section>
+    </aside>
+  </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<dialog id="stopdlg" aria-labelledby="sl-title">
+  <form id="sl-form">
+    <h3 id="sl-title">Stop-loss</h3>
+    <div class="px" id="sl-spot"></div>
+    <div class="field"><span class="cap">Trigger when the spot is</span>
+      <div class="seg" id="sl-dir"><button type="button" data-v="above" aria-pressed="false">Above the level</button><button type="button" data-v="below" aria-pressed="true">Below the level</button></div>
+    </div>
+    <div class="field"><label class="cap" for="sl-level">Level</label>
+      <input id="sl-level" type="number" step="any" min="0" required>
+      <div class="chips" id="sl-pct" aria-label="Quick levels from spot">
+        <button type="button" class="mini" data-p="-1">−1%</button><button type="button" class="mini" data-p="-0.5">−0.5%</button>
+        <button type="button" class="mini" data-p="0.5">+0.5%</button><button type="button" class="mini" data-p="1">+1%</button>
+      </div>
+      <div class="sum" id="sl-hint"></div>
+    </div>
+    <div class="field"><span class="cap">For longer than</span>
+      <div class="badd" style="margin:0">
+        <input id="sl-hold" type="number" min="0" step="any" value="1" style="width:80px" aria-label="Hold time">
+        <select id="sl-unit" aria-label="Hold time unit"><option value="1">seconds</option><option value="60" selected>minutes</option></select>
+      </div>
+      <div class="chips" id="sl-chips">
+        <button type="button" class="mini" data-s="0">Immediately</button><button type="button" class="mini" data-s="30">30 s</button>
+        <button type="button" class="mini" data-s="60">1 min</button><button type="button" class="mini" data-s="180">3 min</button><button type="button" class="mini" data-s="300">5 min</button>
+      </div>
+    </div>
+    <div class="field"><label class="cap" for="sl-trail">Trail the stop (optional)</label>
+      <div class="badd" style="margin:0">
+        <input id="sl-trail" type="number" min="0" max="10" step="any" value="0" style="width:80px" aria-label="Trail percent">
+        <span class="cap">% (0 means no trailing)</span>
+      </div>
+      <div class="chips" id="sl-trailchips">
+        <button type="button" class="mini" data-p="0">Off</button><button type="button" class="mini" data-p="0.25">0.25%</button>
+        <button type="button" class="mini" data-p="0.5">0.5%</button><button type="button" class="mini" data-p="1">1%</button>
+      </div>
+      <div class="sum" id="sl-trail-hint"></div>
+    </div>
+    <div class="field"><span class="cap">Then</span>
+      <div class="seg" id="sl-act"><button type="button" data-v="exit" aria-pressed="true">Notify and exit</button><button type="button" data-v="alert" aria-pressed="false">Notify only</button></div>
+    </div>
+    <button type="button" class="btn" id="sl-notif" hidden>Enable desktop notifications</button>
+    <div class="sum bad" id="sl-err" role="alert"></div>
+    <div class="acts">
+      <button class="btn" type="button" id="sl-cancel">Cancel</button>
+      <button class="btn go" type="submit">Arm stop-loss</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="ticket" aria-labelledby="tk-title">
+  <form id="tk-form">
+    <h3 id="tk-title">Paper trade</h3>
+    <div class="px">Live price <b id="tk-px">–</b></div>
+    <div class="row2">
+      <div class="seg" id="tk-act">
+        <button type="button" data-v="BUY" aria-pressed="true">Buy</button>
+        <button type="button" data-v="SELL" aria-pressed="false">Sell</button>
+      </div>
+      <label class="f">Lots<input id="tk-lots" type="number" min="1" max="1000" value="1" style="width:86px"></label>
+    </div>
+    <div class="sum" id="tk-sum"></div>
+    <div class="acts">
+      <button class="btn" type="button" id="tk-cancel">Cancel</button>
+      <button class="btn" type="button" id="tk-draft">Add to strategy</button>
+      <button class="btn go" type="submit" id="tk-go">Place paper order</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const S = { sel: null, series: [], snap: null, win: "d", span: "10", unit: "units", connected: false, prev: new Map(), scrolled: false };
+const WIN_LABEL = { d: "today", m5: "5 min", m15: "15 min", m30: "30 min" };
+const WIN_SECS = { m5: 300, m15: 900, m30: 1800 };
+
+/* ---------- formatting ---------- */
+const inr = new Intl.NumberFormat("en-IN");
+const inr2 = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtStrike = (k) => (Number.isInteger(k) ? inr.format(k) : inr2.format(k));
+function compact(n) {
+  if (n == null || isNaN(n)) return "–";
+  const a = Math.abs(n), s = n < 0 ? "−" : "";
+  if (a >= 1e7) return s + (a / 1e7).toFixed(2) + " Cr";
+  if (a >= 1e5) return s + (a / 1e5).toFixed(2) + " L";
+  if (a >= 1e3) return s + (a / 1e3).toFixed(1) + "K";
+  return s + Math.round(a);
+}
+const scaleOI = (v) => (v == null ? null : S.unit === "lots" && S.snap && S.snap.lot ? v / S.snap.lot : v);
+const signed = (n) => (n == null ? "–" : n > 0 ? "+" + compact(n) : compact(n));
+const hm = (t) => new Date(t * 1000).toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" });
+
+/* ---------- connection ---------- */
+let ws = null;
+function connect() {
+  ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+  ws.onopen = () => { S.connected = true; renderStatus(); };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.type === "hello") onHello(m); else if (m.type === "snap") onSnap(m);
+  };
+  ws.onclose = () => { S.connected = false; renderStatus(); setTimeout(connect, 2000); };
+  ws.onerror = () => ws.close();
+}
+
+async function onHello(m) {
+  S.sel = m; S.series = m.series || []; S.pnlSeries = m.paper_series || []; S.snap = null; S.draft = []; S.draftVer++; S.pfMode = "open"; S.strikeKey = ""; S.alertSeen = null; S.prev.clear(); S.scrolled = false;
+  $("#und").value = m.underlying;
+  await loadExpiries(m.underlying, m.expiry);
+  $("#grid").innerHTML = `<div class="empty">Waiting for the first ticks for ${m.underlying}. Outside market hours this can take longer.</div>`;
+  $("#strip").innerHTML = "";
+  drawCharts();
+}
+
+function onSnap(m) {
+  if (!S.sel || m.sel_id !== S.sel.sel_id) return;
+  S.snap = m;
+  handleAlerts(m);
+  const last = S.series.length ? S.series[S.series.length - 1][0] : 0;
+  if (m.point && m.point[0] > last) {
+    S.series.push(m.point);
+    if (S.series.length > 3000) S.series.shift();
+    drawCharts();
+  }
+  if (m.paper_point && (!S.pnlSeries.length || m.paper_point[0] > S.pnlSeries[S.pnlSeries.length - 1][0])) S.pnlSeries.push(m.paper_point);
+  render();
+}
+
+/* ---------- controls ---------- */
+async function loadUnderlyings() {
+  try {
+    const j = await (await fetch("/api/underlyings")).json();
+    $("#und-list").innerHTML = [...j.indices, ...j.stocks].map((u) => `<option value="${u}">`).join("");
+  } catch (e) { /* list is optional */ }
+}
+async function loadExpiries(u, selected) {
+  const r = await fetch("/api/expiries?underlying=" + encodeURIComponent(u));
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { note(j.detail || "Could not load expiries.", true); $("#expiry").innerHTML = ""; return; }
+  $("#expiry").innerHTML = j.expiries.map((e) => `<option value="${e.value}">${e.label}</option>`).join("");
+  if (selected) $("#expiry").value = selected;
+}
+function note(text, isErr) { const n = $("#note"); n.textContent = text || ""; n.className = "note" + (isErr ? " err" : ""); }
+
+$("#und").addEventListener("change", () => { const u = $("#und").value.trim().toUpperCase(); if (u) loadExpiries(u); });
+$("#form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const u = $("#und").value.trim().toUpperCase(), e = $("#expiry").value;
+  if (!u || !e) { note("Pick an underlying and an expiry first.", true); return; }
+  note(`Loading ${u} ${e}…`); $("#go").disabled = true;
+  try {
+    const r = await fetch("/api/select", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ underlying: u, expiry: e }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) note(j.detail || "Could not start tracking.", true);
+    else note(`Tracking ${j.underlying} ${j.expiry} (${j.tokens} contracts). First ticks arrive within a few seconds.`);
+  } catch (err) { note("Could not reach the server.", true); }
+  $("#go").disabled = false;
+});
+
+function seg(id, key, cb) {
+  const btns = document.querySelectorAll(`#${id} button`);
+  btns.forEach((b) => b.addEventListener("click", () => {
+    btns.forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    S[key] = b.dataset.v; cb();
+  }));
+}
+seg("seg-win", "win", () => { render(); });
+seg("seg-unit", "unit", () => { render(); drawCharts(); });
+$("#span").addEventListener("change", (e) => { S.span = e.target.value; S.scrolled = false; render(); });
+$("#csv").addEventListener("click", exportCsv);
+$("#theme").addEventListener("click", () => {
+  const t = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("oi-theme", t); } catch (e) {}
+  syncThemeLabel();
+});
+function syncThemeLabel() { $("#theme").textContent = document.documentElement.dataset.theme === "light" ? "Dark theme" : "Light theme"; }
+
+/* ---------- status ---------- */
+function renderStatus() {
+  let state = "off", text = "Server offline. Retrying…";
+  if (S.connected) {
+    const f = S.snap && S.snap.feed;
+    if (!f) { state = "wait"; text = "Waiting for data"; }
+    else if (f.status === "live") {
+      if (f.age != null && f.age < 8) { state = "live"; text = `Live, ${Math.round(f.tps)} ticks/s`; }
+      else if (!f.market_open) { state = "idle"; text = "Market closed. Showing last data."; }
+      else { state = "stale"; text = f.age == null ? "Subscribed. Waiting for the first tick." : `No ticks for ${Math.round(f.age)}s`; }
+    } else if (f.status === "connecting") { state = "wait"; text = "Connecting to Angel One…"; }
+    else { state = "stale"; text = "Reconnecting to Angel One…"; }
+    if (f && f.error && f.status !== "live") text += " " + f.error;
+  }
+  $("#status").dataset.state = state;
+  $("#status-text").textContent = text; $("#status-text").title = text;
+}
+
+/* ---------- render ---------- */
+function render() {
+  renderStatus();
+  const s = S.snap;
+  if (!s) return;
+  document.title = (s.spot ? inr.format(Math.round(s.spot)) + " " : "") + s.underlying + " · OI Ladder";
+  renderStrip(s); renderLadder(s); renderMovers(s);
+  if (S.view === "paper") renderPaper(s);
+  refreshTicket();
+}
+
+function warmText(s, secs) {
+  return `Collecting… ${Math.floor(Math.min(s.warm, secs) / 60)} of ${secs / 60} min`;
+}
+function deltaSub(s, side) {
+  const c = s.totals.chg[S.win];
+  const v = c ? c[side] : null;
+  if (v == null) return S.win === "d" ? "Waiting for baseline" : warmText(s, WIN_SECS[S.win]);
+  const since = S.win === "d" && s.baseline_at ? "since " + hm(s.baseline_at) : WIN_LABEL[S.win];
+  const cls = v > 0 ? (side === "ce" ? "c-ce" : "c-pe") : "";
+  return `<span class="${cls}">${signed(scaleOI(v))}</span> ${since}`;
+}
+function stat(label, val, sub, cls) {
+  return `<div class="stat"><div class="lbl">${label}</div><div class="val ${cls || ""}">${val}</div><div class="sub">${sub || ""}</div></div>`;
+}
+function renderStrip(s) {
+  const t = s.totals, lv = s.levels;
+  const chg = s.spot_chg_pct;
+  const spotSub = chg == null ? "" : `<span class="${chg >= 0 ? "up" : "dn"}">${chg >= 0 ? "+" : ""}${chg.toFixed(2)}%</span> vs previous close`;
+  const mp = lv.max_pain;
+  const mpSub = mp != null && s.spot ? `${mp - s.spot >= 0 ? "+" : "−"}${inr.format(Math.round(Math.abs(mp - s.spot)))} pts from spot` : "";
+  const res = lv.resistance, sup = lv.support;
+  const lvSub = (a) => a.length ? `${compact(scaleOI(a[0][1]))} OI` + (a.length > 1 ? `, then ${a.slice(1).map((x) => fmtStrike(x[0])).join(", ")}` : "") : "";
+  $("#strip").innerHTML =
+    stat(s.underlying + " spot", s.spot ? inr2.format(s.spot) : "–", spotSub, "spot") +
+    stat("Put-call ratio", t.pcr != null ? t.pcr.toFixed(2) : "–", "Put OI ÷ call OI, whole chain") +
+    stat("Max pain", mp != null ? fmtStrike(mp) : "–", mpSub) +
+    stat("Resistance (most call OI)", res.length ? fmtStrike(res[0][0]) : "–", lvSub(res), "c-ce") +
+    stat("Support (most put OI)", sup.length ? fmtStrike(sup[0][0]) : "–", lvSub(sup), "c-pe") +
+    stat("Total call OI", compact(scaleOI(t.ce_oi)), deltaSub(s, "ce")) +
+    stat("Total put OI", compact(scaleOI(t.pe_oi)), deltaSub(s, "pe")) +
+    paperStat(s);
+}
+
+function deltaCell(side, x, tint) {
+  const v = x && x.chg ? x.chg[S.win] : null;
+  const sv = scaleOI(v);
+  const txt = v == null ? "–" : v === 0 ? "0" : signed(sv);
+  const cls = v == null || v === 0 ? "muted" : v > 0 ? "add " + side : "cut";
+  const title = v == null ? "" : ` title="${inr.format(v)}"`;
+  return `<div class="c d${tint}" role="cell"><span class="${cls}"${title}>${txt}</span></div>`;
+}
+function oiCell(side, x, maxOI, maxD, tint) {
+  if (!x) return `<div class="c oi ${side}${tint}" role="cell"><div class="t">–</div></div>`;
+  const w = maxOI ? Math.max(1, (x.oi / maxOI) * 100) : 0;
+  const dv = x.chg ? x.chg[S.win] : null;
+  const gw = dv == null || !dv || !maxD ? 0 : Math.max(2, (Math.abs(dv) / maxD) * 100);
+  const g = gw ? `<span class="g ${dv > 0 ? "add" : "cut"}" style="width:${gw.toFixed(1)}%"></span>` : "";
+  return `<div class="c oi ${side}${tint}" role="cell"><span class="b" style="width:${w.toFixed(1)}%"></span>${g}<div class="t" title="${inr.format(x.oi)}">${compact(scaleOI(x.oi))}</div></div>`;
+}
+function ltpCell(k, side, x, tint) {
+  const ltp = x ? x.ltp : null;
+  const key = k + side;
+  const prev = S.prev.get(key);
+  let flash = "";
+  if (prev != null && ltp != null && ltp !== prev) flash = ltp > prev ? " fu" : " fd";
+  if (ltp != null) S.prev.set(key, ltp);
+  const tr = ltp ? ` data-k="${k}" data-t="${side}" title="Click to paper trade"` : "";
+  return `<div class="c n${flash}${tint}"${tr} role="cell">${ltp ? inr2.format(ltp) : "–"}</div>`;
+}
+
+function renderLadder(s) {
+  const all = s.rows;
+  if (!all.length) { $("#grid").innerHTML = `<div class="empty">Connected, but no option ticks yet for ${s.underlying}.</div>`; return; }
+  let view = all;
+  if (S.span !== "all") {
+    const n = +S.span;
+    let ai = all.findIndex((r) => r.k === s.atm);
+    if (ai < 0) ai = Math.floor(all.length / 2);
+    view = all.slice(Math.max(0, ai - n), Math.min(all.length, ai + n + 1));
+  }
+  const dk = S.win;
+  let maxOI = { ce: 0, pe: 0 }, maxD = { ce: 0, pe: 0 };
+  for (const r of view) for (const t of ["ce", "pe"]) {
+    const x = r[t]; if (!x) continue;
+    maxOI[t] = Math.max(maxOI[t], x.oi);
+    const d = x.chg ? x.chg[dk] : null;
+    if (d != null) maxD[t] = Math.max(maxD[t], Math.abs(d));
+  }
+  const dl = S.win === "d" ? "Δ OI" : "Δ OI " + WIN_LABEL[S.win];
+  let html = `<div class="row head" role="row">
+    <div class="c d" role="columnheader">${dl}</div><div class="c c-ce" role="columnheader">Call OI</div><div class="c n" role="columnheader">LTP</div>
+    <div class="c k" role="columnheader">Strike</div>
+    <div class="c n" role="columnheader">LTP</div><div class="c c-pe" role="columnheader">Put OI</div><div class="c d" role="columnheader">${dl}</div></div>`;
+
+  let lineDone = !s.spot;
+  for (const r of view) {
+    if (!lineDone && r.k > s.spot) {
+      html += `<div class="spotline"><span>Spot ${inr2.format(s.spot)}</span></div>`; lineDone = true;
+    }
+    const itmC = s.spot != null && r.k < s.spot ? " itm ce" : "";
+    const itmP = s.spot != null && r.k > s.spot ? " itm pe" : "";
+    html += `<div class="row${r.k === s.atm ? " atm" : ""}" role="row">` +
+      deltaCell("ce", r.ce, itmC) + oiCell("ce", r.ce, maxOI.ce, maxD.ce, itmC) + ltpCell(r.k, "ce", r.ce, itmC) +
+      `<div class="c k" role="cell">${fmtStrike(r.k)}</div>` +
+      ltpCell(r.k, "pe", r.pe, itmP) + oiCell("pe", r.pe, maxOI.pe, maxD.pe, itmP) + deltaCell("pe", r.pe, itmP) + `</div>`;
+  }
+  if (!lineDone && s.spot) html += `<div class="spotline"><span>Spot ${inr2.format(s.spot)}</span></div>`;
+  $("#grid").innerHTML = html;
+
+  if (!S.scrolled) {
+    S.scrolled = true;
+    const atm = document.querySelector(".row.atm"), box = $("#ladder");
+    if (atm && S.span === "all") box.scrollTop = atm.offsetTop - box.clientHeight / 2;
+  }
+}
+
+function renderMovers(s) {
+  const L = { ce_add: [], ce_cut: [], pe_add: [], pe_cut: [] };
+  for (const r of s.rows) for (const t of ["ce", "pe"]) {
+    const v = r[t] && r[t].chg ? r[t].chg[S.win] : null;
+    if (v > 0) L[t + "_add"].push([r.k, v]); else if (v < 0) L[t + "_cut"].push([r.k, v]);
+  }
+  const top = (a, desc) => a.sort((x, y) => (desc ? y[1] - x[1] : x[1] - y[1])).slice(0, 3);
+  const box = (cls, title, items, plus) =>
+    `<div class="mv ${cls}"><h3>${title}</h3><ul>` +
+    (items.length ? items.map((x) => `<li><span>${fmtStrike(x[0])}</span><span>${plus ? "+" : ""}${compact(scaleOI(x[1]))}</span></li>`).join("") : `<li class="none"><span>–</span></li>`) +
+    `</ul></div>`;
+  $("#now-win").textContent = WIN_LABEL[S.win];
+  $("#movers").innerHTML =
+    box("ce", "Call OI added", top(L.ce_add, true), true) + box("pe", "Put OI added", top(L.pe_add, true), true) +
+    box("ce", "Call OI cut", top(L.ce_cut, false), false) + box("pe", "Put OI cut", top(L.pe_cut, false), false);
+}
+
+/* ---------- charts ---------- */
+function drawChart(id, defs, fmt, ref, rows = S.series) {
+  const host = document.getElementById(id);
+  const series = defs.map((d) => ({ d, pts: rows.map((p) => [p[0], d.get(p)]).filter((q) => q[1] != null && isFinite(q[1])) }));
+  let lo = Infinity, hi = -Infinity;
+  series.forEach((s) => s.pts.forEach((q) => { lo = Math.min(lo, q[1]); hi = Math.max(hi, q[1]); }));
+  if (rows.length < 2 || !isFinite(lo)) { host.innerHTML = `<div class="empty">Builds up as ticks arrive.</div>`; host.onpointermove = null; return; }
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const pv = (hi - lo) * 0.1; lo -= pv; hi += pv;
+
+  const W = Math.max(220, host.clientWidth), H = host.clientHeight || 104, pl = 2, pr = 50, pt = 8, pb = 16;
+  const t0 = rows[0][0], t1 = rows[rows.length - 1][0];
+  const X = (t) => pl + (t1 === t0 ? 0 : (t - t0) / (t1 - t0)) * (W - pl - pr);
+  const Y = (v) => pt + (1 - (v - lo) / (hi - lo)) * (H - pt - pb);
+
+  const paths = series.map((s) => s.pts.length
+    ? `<path class="ln ${s.d.cls}" d="${s.pts.map((q, i) => (i ? "L" : "M") + X(q[0]).toFixed(1) + " " + Y(q[1]).toFixed(1)).join(" ")}"/>` : "").join("");
+  const refLine = ref != null && ref > lo && ref < hi ? `<line class="refline" x1="${pl}" x2="${W - pr}" y1="${Y(ref)}" y2="${Y(ref)}"/>` : "";
+  host.innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${defs.map((d) => d.name).join(" and ")} over the session">
+      ${refLine}${paths}
+      <line class="guide" id="${id}-g" y1="${pt}" y2="${H - pb}" style="display:none"/>
+      <text class="ax" x="${W - pr + 5}" y="${pt + 8}">${fmt(hi - pv)}</text>
+      <text class="ax" x="${W - pr + 5}" y="${H - pb}">${fmt(lo + pv)}</text>
+      <text class="ax" x="${pl}" y="${H - 3}">${hm(t0)}</text>
+      <text class="ax" x="${W - pr}" y="${H - 3}" text-anchor="end">${hm(t1)}</text>
+    </svg><div class="tip" id="${id}-t"></div>`;
+
+  const guide = document.getElementById(id + "-g"), tip = document.getElementById(id + "-t");
+  host.onpointermove = (ev) => {
+    const x = ev.clientX - host.getBoundingClientRect().left;
+    const tt = t0 + Math.min(1, Math.max(0, (x - pl) / (W - pl - pr))) * (t1 - t0);
+    let best = 0, bd = Infinity;
+    for (let i = 0; i < rows.length; i++) { const dd = Math.abs(rows[i][0] - tt); if (dd < bd) { bd = dd; best = i; } }
+    const p = rows[best], gx = X(p[0]);
+    guide.setAttribute("x1", gx); guide.setAttribute("x2", gx); guide.style.display = "";
+    tip.innerHTML = `<b>${hm(p[0])}</b>` + defs.map((d) => { const v = d.get(p); return `<i>${d.name} ${v != null && isFinite(v) ? fmt(v) : "–"}</i>`; }).join("");
+    tip.style.display = "block";
+    tip.style.left = Math.min(Math.max(0, gx - 70), Math.max(0, W - 200)) + "px";
+  };
+  host.onpointerleave = () => { guide.style.display = "none"; tip.style.display = "none"; };
+}
+
+let chartRaf = 0;
+function drawCharts() {
+  cancelAnimationFrame(chartRaf);
+  chartRaf = requestAnimationFrame(() => {
+    const last = S.series.length ? S.series[S.series.length - 1] : null;
+    drawChart("ch-spot", [{ name: "Spot", cls: "ln-spot", get: (p) => p[1] }], (v) => inr2.format(v));
+    drawChart("ch-pcr", [{ name: "PCR", cls: "ln-pcr", get: (p) => (p[2] > 0 && p[3] != null ? p[3] / p[2] : null) }], (v) => v.toFixed(2), 1);
+    drawChart("ch-oi", [{ name: "Calls", cls: "ln-ce", get: (p) => p[2] }, { name: "Puts", cls: "ln-pe", get: (p) => p[3] }], (v) => compact(scaleOI(v)));
+    $("#now-spot").textContent = last && last[1] ? inr2.format(last[1]) : "";
+    $("#now-pcr").textContent = last && last[2] > 0 ? (last[3] / last[2]).toFixed(2) : "";
+    $("#now-oi").textContent = last ? `Calls ${compact(scaleOI(last[2]))}, puts ${compact(scaleOI(last[3]))}` : "";
+  });
+}
+new ResizeObserver(drawCharts).observe(document.querySelector(".side"));
+
+/* ---------- CSV ---------- */
+function exportCsv() {
+  const s = S.snap;
+  if (!s) { note("No data to export yet.", true); return; }
+  const cols = ["ltp", "oi", "chg_today", "chg_5m", "chg_15m", "chg_30m"];
+  const head = ["strike", ...cols.map((c) => "ce_" + c), ...cols.map((c) => "pe_" + c)];
+  const cells = (x) => x ? [x.ltp, x.oi, x.chg.d, x.chg.m5, x.chg.m15, x.chg.m30] : cols.map(() => "");
+  const lines = [head.join(",")].concat(s.rows.map((r) => [r.k, ...cells(r.ce), ...cells(r.pe)].map((v) => (v == null ? "" : v)).join(",")));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" }));
+  const stamp = new Date().toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata" }).replace(/:/g, "");
+  a.download = `${s.underlying}_${s.expiry}_${stamp}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ---------- paper trading ---------- */
+S.paper = null; S.pnlSeries = []; S.view = "chain"; S.tk = null;
+S.draft = []; S.draftId = 1; S.draftVer = 0; S.draftShown = -1; S.pfMode = "open"; S.forcePayoff = false; S.strikeKey = "";
+const money = (n) => (n == null ? "–" : (n < 0 ? "−" : n > 0 ? "+" : "") + "₹" + inr.format(Math.round(Math.abs(n))));
+const pnlCls = (n) => (n > 0 ? "up" : n < 0 ? "dn" : "");
+const shortExp = (e) => e.slice(0, 2) + " " + e.slice(2, 5);
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const motionOK = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reveal = (el) => el.scrollIntoView({ block: "nearest", behavior: motionOK() ? "smooth" : "auto" });
+const strikesNow = () => (S.snap ? S.snap.rows.map((r) => r.k) : []);
+const strikeStep = (ks) => { let m = Infinity; for (let i = 1; i < ks.length; i++) m = Math.min(m, ks[i] - ks[i - 1]); return m; };
+
+const PRESETS = {
+  short_straddle: [[0, "CE", "SELL"], [0, "PE", "SELL"]],
+  long_straddle: [[0, "CE", "BUY"], [0, "PE", "BUY"]],
+  short_strangle: [[2, "CE", "SELL"], [-2, "PE", "SELL"]],
+  long_strangle: [[2, "CE", "BUY"], [-2, "PE", "BUY"]],
+  iron_condor: [[2, "CE", "SELL"], [4, "CE", "BUY"], [-2, "PE", "SELL"], [-4, "PE", "BUY"]],
+  bull_call: [[0, "CE", "BUY"], [2, "CE", "SELL"]],
+  bear_put: [[0, "PE", "BUY"], [-2, "PE", "SELL"]],
+};
+const PRESET_NAMES = { short_straddle: "Short straddle", long_straddle: "Long straddle", short_strangle: "Short strangle", long_strangle: "Long strangle", iron_condor: "Iron condor", bull_call: "Bull call spread", bear_put: "Bear put spread" };
+
+function paperStat(s) {
+  const p = s.paper;
+  if (!p || (!p.legs.length && !p.closed.length)) return "";
+  const total = p.unrealized + p.realized;
+  return stat("Paper P&L", money(total), `Open ${money(p.unrealized)}, booked ${money(p.realized)}`, pnlCls(total));
+}
+
+function setView(v) {
+  S.view = v;
+  document.querySelectorAll("#seg-view button").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.v === v)));
+  $("#view-chain").hidden = v !== "chain";
+  $("#view-paper").hidden = v !== "paper";
+  if (S.snap) render();
+}
+document.querySelectorAll("#seg-view button").forEach((b) => b.addEventListener("click", () => setView(b.dataset.v)));
+
+/* ----- order ticket (single order, or add to the draft) ----- */
+function openTicket(k, t) {
+  if (!S.snap) return;
+  S.tk = { k, t: t.toUpperCase(), act: "BUY" };
+  $("#tk-title").textContent = `${S.snap.underlying} ${fmtStrike(k)} ${S.tk.t}, ${shortExp(S.snap.expiry)}`;
+  $("#tk-lots").value = 1;
+  setAct("BUY");
+  $("#ticket").showModal();
+  refreshTicket();
+}
+function setAct(a) {
+  if (S.tk) S.tk.act = a;
+  document.querySelectorAll("#tk-act button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === a)));
+  refreshTicket();
+}
+function refreshTicket() {
+  const dlg = $("#ticket");
+  if (!S.tk || !dlg.open || !S.snap) return;
+  const r = S.snap.rows.find((r) => r.k === S.tk.k);
+  const x = r && r[S.tk.t.toLowerCase()];
+  const px = x && x.ltp > 0 ? x.ltp : null;
+  const lots = Math.max(1, parseInt($("#tk-lots").value, 10) || 1);
+  const qty = lots * (S.snap.lot || 0);
+  $("#tk-px").textContent = px ? "₹" + inr2.format(px) : "No price yet";
+  $("#tk-sum").textContent = px && qty
+    ? `${lots} lot${lots > 1 ? "s" : ""} × ${S.snap.lot} = ${inr.format(qty)} qty. Premium ${S.tk.act === "BUY" ? "paid" : "received"}: ₹${inr.format(Math.round(px * qty))}`
+    : "";
+  $("#tk-go").disabled = !px;
+}
+$("#grid").addEventListener("click", (ev) => {
+  const c = ev.target.closest("[data-k]");
+  if (c) openTicket(+c.dataset.k, c.dataset.t);
+});
+document.querySelectorAll("#tk-act button").forEach((b) => b.addEventListener("click", () => setAct(b.dataset.v)));
+$("#tk-lots").addEventListener("input", refreshTicket);
+$("#tk-cancel").addEventListener("click", () => $("#ticket").close());
+$("#tk-draft").addEventListener("click", () => {
+  if (!S.tk) return;
+  addLeg(S.tk.k, S.tk.t, S.tk.act, Math.max(1, parseInt($("#tk-lots").value, 10) || 1));
+  $("#ticket").close();
+  setView("paper");
+});
+$("#tk-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  if (!S.tk) return;
+  const lots = Math.max(1, parseInt($("#tk-lots").value, 10) || 1);
+  const ok = await postOrders([{ strike: S.tk.k, option_type: S.tk.t, side: S.tk.act, lots }]);
+  if (ok) $("#ticket").close();
+});
+
+async function postOrders(orders, strategy) {
+  try {
+    const r = await fetch("/api/paper/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sel_id: S.sel.sel_id, orders, strategy: strategy || "" }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { note(j.detail || "Order failed.", true); return false; }
+    note(`Placed ${j.placed} paper order${j.placed > 1 ? "s" : ""} at the live price.`);
+    return true;
+  } catch (e) { note("Could not reach the server.", true); return false; }
+}
+async function paperPost(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) note(j.detail || "Request failed.", true); else note("");
+  return r.ok;
+}
+
+/* ----- draft strategy ----- */
+function touchDraft() {
+  S.draftVer++; S.forcePayoff = true;
+  if (S.snap && S.view === "paper") renderPaper(S.snap);
+}
+function addLeg(k, t, side, lots) {
+  S.draft.push({ id: S.draftId++, strike: k, type: t, side, lots });
+  if (S.draft.length === 1) S.pfMode = "draft";
+  touchDraft();
+}
+function draftLegs(s) {
+  return S.draft.map((d) => {
+    const r = s.rows.find((r) => r.k === d.strike);
+    const x = r && r[d.type.toLowerCase()];
+    const px = x && x.ltp > 0 ? x.ltp : null;
+    return { ...d, entry: px, ltp: px, qty: d.lots * (s.lot || 0), ready: px != null, draft: true };
+  });
+}
+function setMode(m) { S.pfMode = m; S.forcePayoff = true; if (S.snap && S.view === "paper") renderPaper(S.snap); }
+
+let bSide = "BUY", bType = "CE";
+[["b-side", (v) => (bSide = v)], ["b-type", (v) => (bType = v)]].forEach(([id, set]) => {
+  const btns = document.querySelectorAll(`#${id} button`);
+  btns.forEach((b) => b.addEventListener("click", () => { btns.forEach((x) => x.setAttribute("aria-pressed", String(x === b))); set(b.dataset.v); }));
+});
+$("#b-add").addEventListener("click", () => {
+  const k = parseFloat($("#b-strike").value);
+  if (isNaN(k)) { note("Wait for the chain to load, then pick a strike.", true); return; }
+  addLeg(k, bType, bSide, Math.min(1000, Math.max(1, parseInt($("#b-lots").value, 10) || 1)));
+});
+$("#b-load").addEventListener("click", () => {
+  const s = S.snap;
+  if (!s || s.atm == null) { note("Wait for the chain to load first.", true); return; }
+  const ks = s.rows.map((r) => r.k), step = strikeStep(ks);
+  const lots = Math.min(1000, Math.max(1, parseInt($("#b-lots").value, 10) || 1));
+  const key = $("#preset").value, legs = [];
+  for (const [off, t, side] of PRESETS[key]) {
+    const k = s.atm + off * step;
+    if (!ks.includes(k)) { note(`Strike ${fmtStrike(k)} is not in the chain, so that strategy can't be built here.`, true); return; }
+    legs.push({ id: S.draftId++, strike: k, type: t, side, lots });
+  }
+  S.draft = legs; S.pfMode = "draft";
+  $("#b-name").value = PRESET_NAMES[key];
+  note("");
+  touchDraft();
+});
+$("#b-clear").addEventListener("click", () => { S.draft = []; if (S.pfMode === "draft") S.pfMode = "open"; touchDraft(); });
+$("#b-exec").addEventListener("click", async () => {
+  if (!S.snap || !S.draft.length) return;
+  const name = ($("#b-name").value.trim() || "Custom strategy").slice(0, 40);
+  const orders = S.draft.map((d) => ({ strike: d.strike, option_type: d.type, side: d.side, lots: d.lots }));
+  $("#b-exec").disabled = true;
+  const ok = await postOrders(orders, name);
+  if (ok) {
+    S.draft = []; S.pfMode = "open"; touchDraft();
+    note(`${name} executed at live prices. It is listed under Your strategy positions.`);
+    reveal($("#pp-open"));
+  }
+});
+$("#b-legs").addEventListener("click", (ev) => {
+  const b = ev.target.closest("button[data-b]");
+  if (!b) return;
+  const d = S.draft.find((x) => x.id === +b.closest("[data-id]").dataset.id);
+  if (!d) return;
+  const a = b.dataset.b;
+  if (a === "side") d.side = d.side === "BUY" ? "SELL" : "BUY";
+  else if (a === "type") d.type = d.type === "CE" ? "PE" : "CE";
+  else if (a === "rm") S.draft = S.draft.filter((x) => x !== d);
+  else {
+    const ks = strikesNow(), i = ks.indexOf(d.strike), j = i + (a === "up" ? 1 : -1);
+    if (i >= 0 && j >= 0 && j < ks.length) d.strike = ks[j];
+  }
+  if (!S.draft.length && S.pfMode === "draft") S.pfMode = "open";
+  touchDraft();
+});
+$("#b-legs").addEventListener("change", (ev) => {
+  const inp = ev.target.closest("input[data-b='lots']");
+  if (!inp) return;
+  const d = S.draft.find((x) => x.id === +inp.closest("[data-id]").dataset.id);
+  if (d) { d.lots = Math.min(1000, Math.max(1, parseInt(inp.value, 10) || 1)); touchDraft(); }
+});
+document.querySelectorAll("#seg-pf button").forEach((b) => b.addEventListener("click", () => setMode(b.dataset.v)));
+
+$("#pp-reset").addEventListener("click", async () => {
+  if (confirm("Delete all paper positions and closed trades?")) await paperPost("/api/paper/reset");
+});
+$("#pp-open").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-act]");
+  if (!b) return;
+  const id = +b.dataset.id, a = b.dataset.act;
+  if (a === "close") await paperPost("/api/paper/close", { id });
+  else if (a === "gclose") await paperPost("/api/paper/close_group", { id });
+  else if (a === "gstop") openStop(id, b.dataset.label);
+  else if (a === "gpay") { setMode("g" + id); reveal($("#payoff")); }
+  else {
+    const spot = parseFloat(prompt("Settlement price of the underlying at expiry:"));
+    if (isFinite(spot) && spot > 0) await paperPost("/api/paper/settle", { id, spot });
+  }
+});
+
+/* ----- rendering ----- */
+function syncStrikeSelect(s) {
+  if (!s.rows.length) return;
+  const key = s.rows.map((r) => r.k).join(",");
+  if (key === S.strikeKey) return;
+  S.strikeKey = key;
+  const sel = $("#b-strike"), prev = sel.value;
+  sel.innerHTML = s.rows.map((r) => `<option value="${r.k}">${fmtStrike(r.k)}</option>`).join("");
+  const keep = [...sel.options].some((o) => o.value === prev);
+  sel.value = keep ? prev : String(s.atm != null ? s.atm : s.rows[Math.floor(s.rows.length / 2)].k);
+}
+
+function renderBuilder(s) {
+  const host = $("#b-legs");
+  if (S.draftShown !== S.draftVer) {       // rebuild only on edits so inputs keep focus
+    S.draftShown = S.draftVer;
+    let h = `<div class="br hd"><div>Side</div><div>Type</div><div>Strike</div><div>Lots</div><div class="r">Price</div><div></div></div>`;
+    if (!S.draft.length) h += `<div class="empty">No legs yet. Add one above, load a preset, or choose Add to strategy on a price in the option chain.</div>`;
+    for (const d of S.draft) {
+      h += `<div class="br" data-id="${d.id}">` +
+        `<div><button type="button" class="pill ${d.side === "BUY" ? "buy" : "sell"}" data-b="side" title="Switch Buy and Sell">${d.side === "BUY" ? "Buy" : "Sell"}</button></div>` +
+        `<div><button type="button" class="mini" data-b="type" title="Switch CE and PE">${d.type}</button></div>` +
+        `<div class="stp"><button type="button" class="mini" data-b="dn" aria-label="Lower strike">−</button><span>${fmtStrike(d.strike)}</span><button type="button" class="mini" data-b="up" aria-label="Higher strike">+</button></div>` +
+        `<div><input type="number" min="1" max="1000" value="${d.lots}" data-b="lots" aria-label="Lots"></div>` +
+        `<div class="r" data-pid="${d.id}">–</div>` +
+        `<div class="r"><button type="button" class="mini" data-b="rm" aria-label="Remove leg">×</button></div></div>`;
+    }
+    host.innerHTML = h;
+  }
+  const legs = draftLegs(s);
+  for (const l of legs) {
+    const el = host.querySelector(`[data-pid="${l.id}"]`);
+    if (el) el.textContent = l.ready ? inr2.format(l.ltp) : "no price";
+  }
+  $("#b-exec").disabled = !(legs.length && legs.every((l) => l.ready));
+  const credit = legs.filter((l) => l.ready).reduce((t, l) => t + (l.side === "SELL" ? 1 : -1) * l.entry * l.qty, 0);
+  $("#b-sum").textContent = legs.length
+    ? `${legs.length} leg${legs.length > 1 ? "s" : ""}. ${credit >= 0 ? "Net credit" : "Net debit"} ₹${inr.format(Math.round(Math.abs(credit)))} at current prices. Nothing is placed until you press Execute strategy.`
+    : "";
+}
+
+function legRow(l, side, name) {
+  let act;
+  if (l.expired) act = `<button class="mini" data-act="settle" data-id="${l.id}">Settle</button>`;
+  else if (l.live) act = `<button class="mini" data-act="close" data-id="${l.id}"${l.ltp == null ? " disabled" : ""}>Close</button>`;
+  else act = `<button class="mini" disabled title="Switch to ${l.underlying} ${l.expiry} to close this at a live price">Close</button>`;
+  return `<div class="pr"><div>${name(l)}</div><div>${side(l.side)}</div><div class="r">${l.lots}</div><div class="r">${inr2.format(l.entry)}</div>` +
+    `<div class="r">${l.live ? (l.ltp != null ? inr2.format(l.ltp) : "–") : "not tracked"}</div>` +
+    `<div class="r ${pnlCls(l.pnl)}">${l.pnl == null ? "–" : money(l.pnl)}</div><div class="r">${act}</div></div>`;
+}
+
+function renderPaper(s) {
+  const p = s.paper;
+  if (!p) return;
+  const total = p.unrealized + p.realized;
+  $("#pp-sum").innerHTML =
+    stat("Total paper P&L", money(total), "Open plus booked", pnlCls(total)) +
+    stat("Open (live)", money(p.unrealized), p.untracked ? `${p.untracked} leg${p.untracked > 1 ? "s" : ""} on other chains not included` : "Marked to live LTP", pnlCls(p.unrealized)) +
+    stat("Booked", money(p.realized), p.closed.length ? "From closed trades" : "No closed trades yet", pnlCls(p.realized));
+
+  syncStrikeSelect(s);
+  renderBuilder(s);
+
+  const side = (x) => `<span class="pill ${x === "BUY" ? "buy" : "sell"}">${x === "BUY" ? "Buy" : "Sell"}</span>`;
+  const name = (l) => `${l.underlying} ${fmtStrike(l.strike)} ${l.type}<small>${shortExp(l.expiry)}</small>`;
+  let h = `<div class="pr hd"><div>Contract</div><div>Side</div><div class="r">Lots</div><div class="r">Entry</div><div class="r">LTP</div><div class="r">P&amp;L</div><div></div></div>`;
+  if (!p.legs.length) h += `<div class="empty">No open positions yet. Build a strategy above and press Execute strategy.</div>`;
+  const groups = new Map(), singles = [];
+  for (const l of p.legs) {
+    if (l.group) { if (!groups.has(l.group)) groups.set(l.group, []); groups.get(l.group).push(l); } else singles.push(l);
+  }
+  for (const [g, legs] of groups) {
+    const known = legs.every((l) => l.pnl != null);
+    const sum = known ? legs.reduce((t, l) => t + l.pnl, 0) : null;
+    const canClose = legs.every((l) => l.live && l.ltp != null && !l.expired);
+    h += `<div class="pr gh"><div><b>${esc(legs[0].strategy || "Strategy")}</b><small>#${g}, ${legs.length} leg${legs.length > 1 ? "s" : ""}</small></div><div></div><div></div><div></div><div></div>` +
+      `<div class="r ${pnlCls(sum)}"><b>${sum == null ? "–" : money(sum)}</b></div>` +
+      `<div class="r"><button class="mini" data-act="gpay" data-id="${g}">Payoff</button> <button class="mini" data-act="gstop" data-id="${g}" data-label="${esc(legs[0].strategy || "Strategy")} #${g}">Stop-loss</button> <button class="mini" data-act="gclose" data-id="${g}"${canClose ? "" : " disabled"}>Close all</button></div></div>`;
+    for (const l of legs) h += legRow(l, side, name);
+  }
+  if (singles.length) {
+    if (groups.size) h += `<div class="pr gh"><div><b>Single orders</b></div><div></div><div></div><div></div><div></div><div></div><div></div></div>`;
+    for (const l of singles) h += legRow(l, side, name);
+  }
+  $("#pp-open").innerHTML = h;
+
+  let c = `<div class="pr hd"><div>Contract</div><div>Side</div><div class="r">Lots</div><div class="r">Entry</div><div class="r">Exit</div><div class="r">P&amp;L</div><div class="r">Closed</div></div>`;
+  if (!p.closed.length) c += `<div class="empty">Closed trades appear here.</div>`;
+  for (const l of p.closed) {
+    c += `<div class="pr"><div>${name(l)}${l.strategy ? `<small>${esc(l.strategy)}</small>` : ""}</div><div>${side(l.side)}</div><div class="r">${l.lots}</div><div class="r">${inr2.format(l.entry)}</div>` +
+      `<div class="r">${inr2.format(l.exit)}</div><div class="r ${pnlCls(l.pnl)}">${money(l.pnl)}</div><div class="r">${hm(l.closed)}</div></div>`;
+  }
+  $("#pp-closed").innerHTML = c;
+
+  document.querySelectorAll("#seg-pf button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === S.pfMode)));
+  renderStops(s);
+  renderAlerts();
+  drawPayoff(s);
+  drawChart("ch-pnl", [{ name: "P&L", cls: "ln-spot", get: (r) => r[1] }], (v) => money(v), 0, S.pnlSeries);
+}
+
+function payoffSet(s) {
+  const open = s.paper.legs.filter((l) => l.live && !l.expired);
+  const dr = draftLegs(s).filter((l) => l.ready);
+  if (S.pfMode === "draft") return { legs: dr, label: "Draft strategy", empty: "Add legs in the builder to preview the payoff before you execute." };
+  if (S.pfMode === "both") return { legs: [...open, ...dr], label: "Open positions plus draft", empty: "Nothing to show yet. Add draft legs or open a position." };
+  if (S.pfMode.startsWith("g")) {
+    const g = +S.pfMode.slice(1), gl = open.filter((l) => l.group === g);
+    if (gl.length) return { legs: gl, label: `${gl[0].strategy || "Strategy"} #${g}`, empty: "" };
+    S.pfMode = "open";
+  }
+  return { legs: open, label: "All open positions", empty: `No open legs on ${s.underlying} ${shortExp(s.expiry)}. Execute a strategy and its payoff appears here.` };
+}
+
+function drawPayoff(s) {
+  const host = $("#payoff");
+  const { legs, label, empty } = payoffSet(s);
+  $("#pf-cap").textContent = "Showing: " + label;
+  if (!S.forcePayoff && host.matches(":hover") && host.querySelector("svg")) return;   // don't redraw under the cursor
+  S.forcePayoff = false;
+  if (!legs.length) {
+    host.innerHTML = `<div class="empty">${empty}</div>`;
+    $("#pp-stats").innerHTML = ""; host.onpointermove = null; return;
+  }
+  const f = (x) => legs.reduce((t, l) => {
+    const iv = l.type === "CE" ? Math.max(0, x - l.strike) : Math.max(0, l.strike - x);
+    return t + (l.side === "BUY" ? 1 : -1) * (iv - l.entry) * l.qty;
+  }, 0);
+  const ks = [...new Set(legs.map((l) => l.strike))].sort((a, b) => a - b);
+  const slopeHi = legs.filter((l) => l.type === "CE").reduce((t, l) => t + (l.side === "BUY" ? 1 : -1) * l.qty, 0);
+  const spot = s.spot || ks[Math.floor(ks.length / 2)];
+
+  // extremes and breakevens are exact: the payoff is piecewise linear with kinks at the strikes
+  const knots = [0, ...ks], vals = knots.map(f);
+  const maxP = slopeHi > 0 ? Infinity : Math.max(...vals);
+  const maxL = slopeHi < 0 ? -Infinity : Math.min(...vals);
+  const bes = [];
+  for (let i = 0; i < knots.length; i++) {
+    if (Math.abs(vals[i]) < 1e-9 && knots[i] > 0) bes.push(knots[i]);
+    if (i && vals[i - 1] * vals[i] < 0) bes.push(knots[i - 1] + (-vals[i - 1]) * (knots[i] - knots[i - 1]) / (vals[i] - vals[i - 1]));
+  }
+  const last = vals[vals.length - 1];
+  if (slopeHi !== 0 && last * slopeHi < 0) bes.push(knots[knots.length - 1] - last / slopeHi);
+  const beList = [...new Set(bes.map((b) => Math.round(b * 100) / 100))].sort((a, b) => a - b);
+
+  const stopsOn = stopLinesFor(s, legs), stopLv = stopsOn.map((r) => r.level);
+  const lo0 = Math.min(...ks, spot, ...stopLv), hi0 = Math.max(...ks, spot, ...stopLv);
+  const pad = Math.max((hi0 - lo0) * 0.4, spot * 0.03);
+  const xl = Math.max(0, lo0 - pad), xh = hi0 + pad;
+  const xs = new Set([xl, xh, ...ks.filter((k) => k >= xl && k <= xh), ...beList.filter((b) => b >= xl && b <= xh)]);
+  for (let i = 0; i <= 120; i++) xs.add(xl + ((xh - xl) * i) / 120);
+  const pts = [...xs].sort((a, b) => a - b).map((x) => [x, f(x)]);
+
+  let lo = Math.min(0, ...pts.map((q) => q[1])), hi = Math.max(0, ...pts.map((q) => q[1]));
+  if (hi === lo) { hi += 1; lo -= 1; }
+  const pv = (hi - lo) * 0.12; lo -= pv; hi += pv;
+
+  const W = Math.max(320, host.clientWidth), H = host.clientHeight || 290, pl = 8, pr = 8, pt = 22, pb = 24;
+  const X = (x) => pl + ((x - xl) / (xh - xl)) * (W - pl - pr);
+  const Y = (v) => pt + (1 - (v - lo) / (hi - lo)) * (H - pt - pb);
+  const line = pts.map((q, i) => (i ? "L" : "M") + X(q[0]).toFixed(1) + " " + Y(q[1]).toFixed(1)).join(" ");
+  const z = Y(0);
+  const area = line + ` L${X(xh).toFixed(1)} ${z.toFixed(1)} L${X(xl).toFixed(1)} ${z.toFixed(1)} Z`;
+  const openIn = legs.filter((l) => !l.draft);
+  const live = openIn.reduce((t, l) => t + (l.pnl || 0), 0);
+
+  let axis = "";
+  for (let i = 0; i <= 4; i++) {
+    const x = xl + ((xh - xl) * i) / 4;
+    axis += `<text class="ax" x="${X(x)}" y="${H - 7}" text-anchor="${i === 0 ? "start" : i === 4 ? "end" : "middle"}">${inr.format(Math.round(x))}</text>`;
+  }
+  const beMarks = beList.filter((b) => b >= xl && b <= xh).map((b) =>
+    `<circle cx="${X(b)}" cy="${z}" r="3.5" fill="var(--panel)" stroke="var(--text)" stroke-width="1.5"/>` +
+    `<text class="lbl-be" x="${X(b)}" y="${z - 8}" text-anchor="middle">${inr.format(Math.round(b))}</text>`).join("");
+  const spotX = X(spot);
+  const stopMarks = stopsOn.map((r) => {
+    const x = X(r.level), left = x > W - 110;
+    return `<line class="stopv" x1="${x}" x2="${x}" y1="${pt - 6}" y2="${H - pb}"/><text class="lbl-stop" x="${x + (left ? -5 : 5)}" y="${H - pb - 6}" text-anchor="${left ? "end" : "start"}">Stop ${r.direction === "above" ? "≥" : "≤"} ${inr.format(Math.round(r.level))}</text>`;
+  }).join("");
+  const dot = openIn.length ? `<circle cx="${spotX}" cy="${Y(live)}" r="5" style="fill:${live >= 0 ? "var(--pe)" : "var(--ce)"};stroke:var(--panel);stroke-width:2"/>` : "";
+
+  host.innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Profit and loss at expiry for the ${esc(label)}">
+      <defs>
+        <clipPath id="clip-prof"><rect x="0" y="0" width="${W}" height="${z}"/></clipPath>
+        <clipPath id="clip-loss"><rect x="0" y="${z}" width="${W}" height="${H}"/></clipPath>
+      </defs>
+      <path d="${area}" clip-path="url(#clip-prof)" style="fill:var(--pe);fill-opacity:.2"/>
+      <path d="${area}" clip-path="url(#clip-loss)" style="fill:var(--ce);fill-opacity:.2"/>
+      <line class="axl" x1="${pl}" x2="${W - pr}" y1="${z}" y2="${z}"/>
+      <path class="ln ln-payoff" d="${line}"/>
+      <line class="spotv" x1="${spotX}" x2="${spotX}" y1="${pt - 6}" y2="${H - pb}"/>
+      <text class="lbl-spot" x="${Math.min(Math.max(spotX, 50), W - 50)}" y="${pt - 9}" text-anchor="middle">Spot ${inr2.format(spot)}</text>
+      ${stopMarks}${beMarks}${dot}${axis}
+      <line class="guide" id="pf-g" y1="${pt - 6}" y2="${H - pb}" style="display:none"/>
+    </svg><div class="tip" id="pf-t"></div>`;
+
+  const guide = $("#pf-g"), tip = $("#pf-t");
+  host.onpointermove = (ev) => {
+    const px = ev.clientX - host.getBoundingClientRect().left;
+    const x = xl + Math.min(1, Math.max(0, (px - pl) / (W - pl - pr))) * (xh - xl);
+    const gx = X(x);
+    guide.setAttribute("x1", gx); guide.setAttribute("x2", gx); guide.style.display = "";
+    const v = f(x);
+    tip.innerHTML = `<b>At ${inr.format(Math.round(x))}</b><span class="${pnlCls(v)}">${money(v)}</span>`;
+    tip.style.display = "block";
+    tip.style.left = Math.min(Math.max(0, gx - 60), Math.max(0, W - 190)) + "px";
+  };
+  host.onpointerleave = () => { guide.style.display = "none"; tip.style.display = "none"; };
+
+  const credit = legs.reduce((t, l) => t + (l.side === "SELL" ? 1 : -1) * l.entry * l.qty, 0);
+  $("#pp-stats").innerHTML =
+    stat("Max profit", maxP === Infinity ? "Unlimited" : money(maxP), "At expiry", maxP === Infinity || maxP > 0 ? "up" : "") +
+    stat("Max loss", maxL === -Infinity ? "Unlimited" : money(maxL), "At expiry", maxL === -Infinity || maxL < 0 ? "dn" : "") +
+    stat("Breakeven", beList.length ? beList.map((b) => inr.format(Math.round(b))).join(", ") : "None", "At expiry") +
+    stat(credit >= 0 ? "Net credit" : "Net debit", "₹" + inr.format(Math.round(Math.abs(credit))), "Premium on these legs") +
+    (openIn.length ? stat("Live P&L (dot)", money(live), "Right now, not at expiry", pnlCls(live)) : "");
+}
+
+/* ---------- stop-loss rules and alerts ---------- */
+S.alerts = []; S.alertSeen = null; S.stopCtx = null;
+const fmtDur = (sec) => {
+  sec = Math.round(sec);
+  if (sec <= 0) return "no wait";
+  if (sec < 60) return sec + "s";
+  const m = Math.floor(sec / 60), r = sec % 60;
+  return m + " min" + (r ? " " + r + "s" : "");
+};
+
+/* sound: browsers only allow audio after a click, so the context is created on the first click */
+let actx = null;
+document.addEventListener("click", () => {
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { /* no audio */ } }
+  if (actx && actx.state === "suspended") actx.resume();
+});
+function beep(kind) {
+  if (!actx) return;
+  const pattern = kind === "stop" || kind === "exit" ? [880, 660, 880, 660] : [660];
+  pattern.forEach((f, i) => {
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + i * 0.24;
+    o.frequency.value = f; g.gain.value = 0.09;
+    o.connect(g); g.connect(actx.destination);
+    o.start(t); o.stop(t + 0.18);
+  });
+}
+const ALERT_TITLE = { stop: "Stop-loss triggered", exit: "Position exited", warn: "Heads up", info: "Update", system: "Phone alert failed", trail: "Stop moved" };
+function toast(a) {
+  const el = document.createElement("div");
+  el.className = "toast " + a.kind;
+  el.setAttribute("role", a.kind === "stop" || a.kind === "exit" ? "alert" : "status");
+  el.innerHTML = `<div><b>${ALERT_TITLE[a.kind] || "Alert"}</b><span>${esc(a.text)}</span></div><button type="button" class="mini" aria-label="Dismiss">×</button>`;
+  el.querySelector("button").addEventListener("click", () => el.remove());
+  $("#toasts").appendChild(el);
+  if (a.kind === "info" || a.kind === "warn" || a.kind === "trail") setTimeout(() => el.remove(), 20000);
+}
+function desktopNote(a) {
+  if (a.kind === "info" || !("Notification" in window) || Notification.permission !== "granted") return;
+  try { new Notification(ALERT_TITLE[a.kind] || "Alert", { body: a.text, tag: "oi-alert-" + a.id }); } catch (e) { /* ignore */ }
+}
+function handleAlerts(m) {
+  S.alerts = m.alerts || [];
+  const top = S.alerts.length ? Math.max(...S.alerts.map((a) => a.id)) : 0;
+  if (S.alertSeen === null) { S.alertSeen = top; return; }    // do not replay history on connect
+  for (const a of S.alerts) if (a.id > S.alertSeen) { toast(a); beep(a.kind); desktopNote(a); }
+  S.alertSeen = Math.max(S.alertSeen, top);
+}
+
+/* stop-loss dialog */
+function setSeg(id, v) { document.querySelectorAll(`#${id} button`).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === v))); }
+function stopHint() {
+  const s = S.snap, lv = parseFloat($("#sl-level").value), el = $("#sl-hint");
+  el.className = "sum"; el.textContent = "";
+  if (!s || s.spot == null || !isFinite(lv) || !S.stopCtx) return;
+  const diff = lv - s.spot, pct = (diff / s.spot) * 100;
+  const wrong = (S.stopCtx.dir === "above" && lv <= s.spot) || (S.stopCtx.dir === "below" && lv >= s.spot);
+  el.textContent = wrong
+    ? `Spot is already ${S.stopCtx.dir === "above" ? "above" : "below"} ${inr2.format(lv)}. Pick a level it has not crossed yet.`
+    : `${diff >= 0 ? "+" : "−"}${inr.format(Math.round(Math.abs(diff)))} pts (${Math.abs(pct).toFixed(2)}%) from the current spot.`;
+  if (wrong) el.className = "sum bad";
+}
+function trailHint() {
+  const s = S.snap, p = parseFloat($("#sl-trail").value) || 0, el = $("#sl-trail-hint");
+  if (!s || s.spot == null || !S.stopCtx || p <= 0) { el.textContent = p < 0 ? "Trail cannot be negative." : ""; return; }
+  const pts = Math.round((s.spot * p) / 100), below = S.stopCtx.dir === "below";
+  el.textContent = `If ${s.underlying} ${below ? "rises" : "falls"} ${p}% (about ${inr.format(pts)} pts), the stop moves ${below ? "up" : "down"} by the same amount and you get a notification. It never moves back.`;
+}
+function openStop(group, label) {
+  if (!S.snap || S.snap.spot == null) { note("A stop-loss needs a live spot price. Wait for the spot to show in the header.", true); return; }
+  S.stopCtx = { group, dir: "below", action: "exit" };
+  $("#sl-title").textContent = "Stop-loss: " + label;
+  $("#sl-spot").textContent = S.snap.underlying + " spot " + inr2.format(S.snap.spot);
+  $("#sl-level").value = Math.round(S.snap.spot);
+  $("#sl-hold").value = 1; $("#sl-unit").value = "60"; $("#sl-trail").value = 0;
+  $("#sl-err").textContent = "";
+  setSeg("sl-dir", "below"); setSeg("sl-act", "exit");
+  $("#sl-notif").hidden = !("Notification" in window) || Notification.permission !== "default";
+  stopHint(); trailHint();
+  $("#stopdlg").showModal();
+}
+document.querySelectorAll("#sl-dir button").forEach((b) => b.addEventListener("click", () => { S.stopCtx.dir = b.dataset.v; setSeg("sl-dir", b.dataset.v); stopHint(); trailHint(); }));
+document.querySelectorAll("#sl-act button").forEach((b) => b.addEventListener("click", () => { S.stopCtx.action = b.dataset.v; setSeg("sl-act", b.dataset.v); }));
+$("#sl-level").addEventListener("input", stopHint);
+$("#sl-trail").addEventListener("input", trailHint);
+document.querySelectorAll("#sl-trailchips button").forEach((b) => b.addEventListener("click", () => { $("#sl-trail").value = b.dataset.p; trailHint(); }));
+document.querySelectorAll("#sl-pct button").forEach((b) => b.addEventListener("click", () => {
+  const p = parseFloat(b.dataset.p), lv = Math.round(S.snap.spot * (1 + p / 100));
+  $("#sl-level").value = lv;
+  S.stopCtx.dir = p < 0 ? "below" : "above"; setSeg("sl-dir", S.stopCtx.dir); stopHint(); trailHint();
+}));
+document.querySelectorAll("#sl-chips button").forEach((b) => b.addEventListener("click", () => {
+  const secs = +b.dataset.s;
+  if (secs >= 60 && secs % 60 === 0) { $("#sl-hold").value = secs / 60; $("#sl-unit").value = "60"; }
+  else { $("#sl-hold").value = secs; $("#sl-unit").value = "1"; }
+}));
+$("#sl-notif").addEventListener("click", async () => {
+  try { await Notification.requestPermission(); } catch (e) { /* ignore */ }
+  $("#sl-notif").hidden = Notification.permission !== "default";
+});
+$("#sl-cancel").addEventListener("click", () => $("#stopdlg").close());
+$("#sl-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const hold = Math.round((parseFloat($("#sl-hold").value) || 0) * +$("#sl-unit").value);
+  const body = { group: S.stopCtx.group, direction: S.stopCtx.dir, level: parseFloat($("#sl-level").value), hold_secs: hold, action: S.stopCtx.action, trail_pct: parseFloat($("#sl-trail").value) || 0 };
+  const r = await fetch("/api/stops", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { $("#sl-err").textContent = typeof j.detail === "string" ? j.detail : "Could not arm the stop-loss. Check the level."; return; }
+  $("#stopdlg").close();
+  note(`Stop-loss armed for ${j.label}: spot ${body.direction} ${inr2.format(body.level)} for ${fmtDur(hold)}, then ${body.action === "exit" ? "notify and exit" : "notify only"}${body.trail_pct > 0 ? `. Trailing ${body.trail_pct}%` : ""}.`);
+});
+$("#pp-stop-all").addEventListener("click", () => openStop(null, "all open positions on this chain"));
+
+$("#pp-stops").addEventListener("click", async (ev) => {
+  const b = ev.target.closest("button[data-cancel]");
+  if (b) await paperPost("/api/stops/cancel", { id: +b.dataset.cancel });
+});
+
+const clock = (t) => hm(t);
+function renderStops(s) {
+  const rules = s.stops || [];
+  let h = `<div class="sr hd"><div>Protects</div><div>Condition</div><div>Status</div><div></div></div>`;
+  if (!rules.length) h += `<div class="empty">No stop-loss rules yet. Use Stop-loss on a strategy above. It watches ${esc(s.underlying)} spot, not option prices.</div>`;
+  for (const r of rules) {
+    const cond = `Spot ${r.direction} ${inr2.format(r.level)} for ${r.hold_secs ? fmtDur(r.hold_secs) : "any tick"}, ${r.action === "exit" ? "notify and exit" : "notify only"}` +
+      (r.trail_pct ? `. Trails ${r.trail_pct}%${r.moves ? `, moved ${r.moves}× from ${inr2.format(r.start_level)}` : ""}` : "");
+    let st = "", cls = "", bar = "";
+    if (r.status === "armed") {
+      if (r.pause === "chain" || !r.live) { st = `Paused. Switch to ${r.underlying} ${shortExp(r.expiry)} to watch it.`; cls = "pause"; }
+      else if (r.pause === "market") { st = "Paused while the market is closed."; cls = "pause"; }
+      else if (r.pause === "feed") { st = "Paused. Waiting for a fresh spot price."; cls = "pause"; }
+      else if (r.held > 0) {
+        st = `Breached for ${fmtDur(r.held)} of ${fmtDur(r.hold_secs)}`; cls = "hot";
+        bar = `<i style="width:${Math.min(100, (r.held / Math.max(1, r.hold_secs)) * 100).toFixed(0)}%"></i>`;
+      } else {
+        const gap = s.spot != null ? Math.abs(r.level - s.spot) : null;
+        st = gap != null ? `Watching. Spot ${inr2.format(s.spot)}, ${inr.format(Math.round(gap))} pts from the level.` : "Watching.";
+      }
+    } else if (r.status === "exiting") { st = "Triggered. Exiting at live prices…"; cls = "hot"; }
+    else { st = (r.outcome || r.status) + (r.triggered_at ? ` (${clock(r.triggered_at)})` : ""); cls = r.status === "done" ? "done" : "muted"; }
+    const act = r.status === "armed" || r.status === "exiting" ? `<button class="mini" data-cancel="${r.id}">Cancel</button>` : "";
+    h += `<div class="sr"><div>${esc(r.label)}</div><div>${cond}</div><div class="st ${cls}">${st}${bar ? `<span class="pbar">${bar}</span>` : ""}</div><div class="r">${act}</div></div>`;
+  }
+  $("#pp-stops").innerHTML = h;
+}
+function renderAlerts() {
+  const a = [...S.alerts].reverse().slice(0, 10);
+  $("#pp-alerts").innerHTML = a.length
+    ? a.map((x) => `<div class="al ${x.kind}"><span>${clock(x.ts)}</span><span>${esc(x.text)}</span></div>`).join("")
+    : `<div class="empty">Alerts from your stop-loss rules appear here.</div>`;
+}
+function stopLinesFor(s, legs) {
+  if (S.pfMode === "draft") return [];
+  const groups = new Set(legs.filter((l) => !l.draft && l.group).map((l) => l.group));
+  const anyOpen = legs.some((l) => !l.draft);
+  return (s.stops || []).filter((r) => r.status === "armed" && r.underlying === s.underlying && r.expiry === s.expiry && (r.group == null ? anyOpen : groups.has(r.group)));
+}
+
+/* ---------- phone notifications ---------- */
+async function loadNotify() {
+  try {
+    const j = await (await fetch("/api/notify")).json();
+    $("#nt-status").textContent = j.channels.length
+      ? `Phone alerts on: ${j.channels.join(", ")}`
+      : "Phone alerts off. Set a channel in .env to get WhatsApp messages.";
+  } catch (e) { /* server not ready yet */ }
+}
+$("#nt-test").addEventListener("click", async () => {
+  $("#nt-test").disabled = true;
+  try {
+    const r = await fetch("/api/notify/test", { method: "POST" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) note(typeof j.detail === "string" ? j.detail : "Could not send a test message.", true);
+    else {
+      const bad = j.results.filter((x) => !x.ok);
+      note(bad.length ? "Test failed: " + bad.map((x) => `${x.channel} (${x.detail})`).join("; ")
+                      : "Test message sent to " + j.results.map((x) => x.channel).join(", ") + ". Check your phone.", bad.length > 0);
+    }
+  } catch (e) { note("Could not reach the server.", true); }
+  $("#nt-test").disabled = false;
+});
+
+/* ---------- boot ---------- */
+syncThemeLabel();
+loadUnderlyings();
+loadNotify();
+connect();
+setInterval(renderStatus, 2000);
+</script>
+</body>
+</html>

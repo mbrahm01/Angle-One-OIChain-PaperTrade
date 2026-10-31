@@ -1,0 +1,9 @@
+smartapi-python
+pyotp
+requests
+logzero
+websocket-client
+fastapi
+uvicorn[standard]
+python-dotenv
+tzdata
